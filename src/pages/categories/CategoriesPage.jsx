@@ -11,16 +11,22 @@ import { useQueryState } from '@/hooks/useQueryState'
 import { CATEGORY_COLORS, categoryHex } from '@/lib/constants'
 import { spring } from '@/lib/motion'
 import { useCategories, useCreateCategory, useDeleteCategory, useUpdateCategory } from '@/queries'
+import { categoriesApi } from '../../api/categories.js'
+import { getImageUrl } from '../../api/config.js'
 
 export default function CategoriesPage() {
   const [query, setQuery] = useQueryState({ search: '', sortBy: 'name', new: '' })
   const [form, setForm] = useState(query.new ? { category: null } : null)
+  const [isUploading, setIsUploading] = useState(false)
   const fmt = useFormatters()
   const toast = useToast()
   const confirm = useConfirm()
   const { data, isLoading } = useCategories({ search: query.search, sortBy: query.sortBy })
   const remove = useDeleteCategory()
-  const rows = data?.data ?? []
+  // const rows = data?.data ?? []
+  const rows = Array.isArray(data)
+    ? data
+    : data?.data ?? []
   const totalValue = rows.reduce((sum, row) => sum + row.stockValue, 0) || 1
 
   function closeForm() {
@@ -58,7 +64,11 @@ export default function CategoriesPage() {
                 <span className="pointer-events-none absolute -right-8 -top-8 size-28 rounded-full opacity-20 blur-2xl" style={{ backgroundColor: color }} />
                 <div className="relative flex items-start justify-between">
                   {category.imageUrl ? (
-                    <img src={category.imageUrl} alt="" className="size-14 rounded-xl border border-line object-cover shadow-card transition-transform duration-500 group-hover:scale-105" />
+                    <img
+                      src={getImageUrl(category.imageUrl)}
+                      alt={category.name}
+                      className="size-14 rounded-xl border border-line object-cover shadow-card transition-transform duration-500 group-hover:scale-105"
+                    />
                   ) : (
                     <span className="grid size-11 place-items-center rounded-xl" style={{ backgroundColor: `color-mix(in oklab, ${color} 16%, transparent)`, color }}>
                       <Tags className="size-5" />
@@ -93,14 +103,32 @@ export default function CategoriesPage() {
       )}
 
       <Modal open={Boolean(form)} onClose={closeForm} title={form?.category ? 'Edit category' : 'New category'} icon={<Tags />}
-        footer={<><Button variant="secondary" onClick={closeForm}>Cancel</Button><Button type="submit" form="category-form">{form?.category ? 'Save changes' : 'Add category'}</Button></>}>
-        {form && <CategoryForm key={form.category?.id ?? 'new'} category={form.category} onDone={closeForm} />}
+        footer={<><Button variant="secondary" onClick={closeForm}>Cancel</Button><Button
+          type="submit"
+          form="category-form"
+          disabled={isUploading}
+        >
+          {isUploading
+            ? 'Uploading...'
+            : form?.category
+              ? 'Save changes'
+              : 'Add category'}
+        </Button></>}>
+        {form && (
+          <CategoryForm
+            key={form.category?.id ?? 'new'}
+            category={form.category}
+            onDone={closeForm}
+            isUploading={isUploading}
+            setIsUploading={setIsUploading}
+          />
+        )}
       </Modal>
     </div>
   )
 }
 
-function CategoryForm({ category, onDone }) {
+function CategoryForm({ category, onDone, isUploading, setIsUploading }) {
   const toast = useToast()
   const create = useCreateCategory()
   const update = useUpdateCategory()
@@ -108,22 +136,143 @@ function CategoryForm({ category, onDone }) {
     defaultValues: { name: category?.name ?? '', description: category?.description ?? '', color: category?.color ?? 'indigo' },
   })
   const color = useWatch({ control, name: 'color' })
+  const [selectedImage, setSelectedImage] = useState(null)
+  const [imagePreview, setImagePreview] = useState(
+    getImageUrl(category?.imageUrl)
+  )
+  // const [imagePreview, setImagePreview] = useState(category?.imageUrl ?? '')
+  // const [isUploading, setIsUploading] = useState(false)
 
+  // async function onSubmit(values) {
+  //   try {
+  //     setIsUploading(true)
+
+  //     const categoryData = { ...values }
+
+  //     if (selectedImage) {
+  //       const uploadResult = await categoriesApi.uploadImage(selectedImage)
+  //       categoryData.imageUrl = uploadResult.imageUrl
+  //     }
+
+  //     const saved = category
+  //       ? await update.mutateAsync({
+  //         id: category.id,
+  //         data: categoryData,
+  //       })
+  //       : await create.mutateAsync(categoryData)
+
+  //     toast.success(category ? 'Category updated' : 'Category added', {
+  //       description: saved.name,
+  //     })
+
+  //     onDone()
+  //   } catch (error) {
+  //     if (error.fieldErrors?.name) {
+  //       setError('name', { message: error.fieldErrors.name })
+  //     }
+
+  //     toast.error('Could not save', { description: error.message })
+  //   } finally {
+  //     setIsUploading(false)
+  //   }
+  // }
   async function onSubmit(values) {
     try {
-      const saved = category ? await update.mutateAsync({ id: category.id, data: values }) : await create.mutateAsync(values)
-      toast.success(category ? 'Category updated' : 'Category added', { description: saved.name })
+      setIsUploading(true)
+
+      const categoryData = { ...values }
+
+      console.log("1. Form values:", values)
+
+      if (selectedImage) {
+        console.log("2. Uploading image:", selectedImage)
+
+        const uploadResult = await categoriesApi.uploadImage(selectedImage)
+
+        console.log("3. Image upload response:", uploadResult)
+
+        categoryData.imageUrl = uploadResult.imageUrl
+      }
+
+      console.log("4. Final category data:", categoryData)
+
+      const saved = category
+        ? await update.mutateAsync({
+          id: category.id,
+          data: categoryData,
+        })
+        : await create.mutateAsync(categoryData)
+
+      console.log("5. Category saved:", saved)
+
+      console.log("SAVED CATEGORY RESPONSE:", JSON.stringify(saved, null, 2))
+
+      console.log("MOCK MODE:", import.meta.env.VITE_USE_MOCK)
+
+      console.log("API BASE URL:", import.meta.env.VITE_API_BASE_URL)
+
+
+      toast.success(category ? 'Category updated' : 'Category added', {
+        description: saved.name,
+      })
+
       onDone()
+
     } catch (error) {
-      if (error.fieldErrors?.name) setError('name', { message: error.fieldErrors.name })
+      console.error("CATEGORY SAVE ERROR:", error)
+
+      if (error.fieldErrors?.name) {
+        setError('name', { message: error.fieldErrors.name })
+      }
+
       toast.error('Could not save', { description: error.message })
+
+    } finally {
+      setIsUploading(false)
     }
   }
-
   return (
     <form id="category-form" className="space-y-4" onSubmit={handleSubmit(onSubmit)}>
       <Input label="Name" required autoFocus error={errors.name?.message} {...register('name', { required: 'Enter a name' })} />
       <Textarea label="Description" optional rows={2} {...register('description')} />
+      <div>
+        <p className="mb-2 text-sm font-medium text-fg">Category Image</p>
+
+        <label className="flex cursor-pointer flex-col items-center justify-center rounded-xl border-2 border-dashed border-line bg-surface-2 p-5 text-center transition-colors hover:border-primary">
+          {imagePreview ? (
+            <img
+              src={imagePreview}
+              alt="Category preview"
+              className="mb-3 size-24 rounded-xl object-cover shadow-card"
+            />
+          ) : (
+            <div className="mb-3 grid size-12 place-items-center rounded-xl bg-surface-3">
+              <Tags className="size-6 text-fg-muted" />
+            </div>
+          )}
+
+          <span className="text-sm font-medium text-fg">
+            {selectedImage ? selectedImage.name : 'Choose category image'}
+          </span>
+
+          <span className="mt-1 text-xs text-fg-muted">
+            JPG, PNG, WEBP or GIF · Maximum 5 MB
+          </span>
+
+          <input
+            type="file"
+            accept="image/jpeg,image/png,image/webp,image/gif"
+            className="hidden"
+            onChange={(event) => {
+              const file = event.target.files?.[0]
+              if (file) {
+                setSelectedImage(file)
+                setImagePreview(URL.createObjectURL(file))
+              }
+            }}
+          />
+        </label>
+      </div>
       <div>
         <p className="mb-2 text-sm font-medium text-fg">Colour</p>
         <div className="flex flex-wrap gap-2.5" role="radiogroup" aria-label="Colour">

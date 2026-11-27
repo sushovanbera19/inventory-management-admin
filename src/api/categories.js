@@ -19,6 +19,11 @@ export const categoriesApi = {
   list: (params) => (USE_MOCK ? mock.list(params) : http.get('/categories', { params })),
   get: (id) => (USE_MOCK ? mock.get(id) : http.get(`/categories/${id}`)),
   create: (data) => (USE_MOCK ? mock.create(data) : http.post('/categories', data)),
+  uploadImage: (file) => {
+    const formData = new FormData()
+    formData.append('file', file)
+    return http.postForm('/uploads/categories', formData)
+  },
   update: (id, data) => (USE_MOCK ? mock.update(id, data) : http.patch(`/categories/${id}`, data)),
   remove: (id) => (USE_MOCK ? mock.remove(id) : http.delete(`/categories/${id}`)),
 }

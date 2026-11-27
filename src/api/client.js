@@ -93,8 +93,12 @@ async function request(method, path, { params, body, signal } = {}) {
 
   const init = { method, headers, signal }
   if (body !== undefined) {
-    headers['Content-Type'] = 'application/json'
-    init.body = JSON.stringify(body)
+    if (body instanceof FormData) {
+      init.body = body
+    } else {
+      headers['Content-Type'] = 'application/json'
+      init.body = JSON.stringify(body)
+    }
   }
 
   let response
@@ -132,9 +136,18 @@ async function request(method, path, { params, body, signal } = {}) {
  * http.post('/products', body) · http.put(path, body) · http.patch(path, body) · http.delete(path)
  * Each returns the parsed JSON (null for "204 No Content") and throws ApiError otherwise.
  */
+// export const http = {
+//   get: (path, options) => request('GET', path, options),
+//   post: (path, body, options) => request('POST', path, { ...options, body }),
+//   put: (path, body, options) => request('PUT', path, { ...options, body }),
+//   patch: (path, body, options) => request('PATCH', path, { ...options, body }),
+//   delete: (path, options) => request('DELETE', path, options),
+// }
 export const http = {
   get: (path, options) => request('GET', path, options),
   post: (path, body, options) => request('POST', path, { ...options, body }),
+  postForm: (path, formData, options) =>
+    request('POST', path, { ...options, body: formData }),
   put: (path, body, options) => request('PUT', path, { ...options, body }),
   patch: (path, body, options) => request('PATCH', path, { ...options, body }),
   delete: (path, options) => request('DELETE', path, options),
